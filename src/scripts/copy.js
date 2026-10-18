@@ -36,8 +36,30 @@
   const payload = JSON.stringify({ v: 1, jobId: job.id, frame, clip });
   localStorage.setItem('cvatClip', payload);
 
-  let onClipboard = false;
-  try { await navigator.clipboard.writeText(payload); onClipboard = true; } catch (e) {}
+  const copyToClipboard = async text => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) {
+      console.warn('Async clipboard write failed; trying the browser copy fallback.', e);
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    let copied = false;
+    try { copied = document.execCommand('copy'); }
+    finally { textarea.remove(); }
+    return copied;
+  };
+
+  const onClipboard = await copyToClipboard(payload);
   console.log(`COPIED ${clip.length} shapes from frame ${frame}` +
     (onClipboard ? ' (also on clipboard)' : ' (clipboard blocked, saved locally only)'));
 })();

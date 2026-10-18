@@ -1,4 +1,6 @@
 (async () => {
+  const EMBEDDED_DATA = null;
+
   const findStore = () => {
     const root = document.getElementById('root');
     const key = Object.keys(root).find(k => k.startsWith('__reactContainer$'));
@@ -17,8 +19,10 @@
   };
 
   // 1) clipboard (selection from the web page or COPY), 2) last COPY
-  let data = null, from = '';
-  try { data = parse(await navigator.clipboard.readText()); from = 'clipboard'; } catch (e) {}
+  let data = EMBEDDED_DATA, from = 'embedded paste code';
+  if (!data) {
+    try { data = parse(await navigator.clipboard.readText()); from = 'clipboard'; } catch (e) {}
+  }
   if (!data) { data = parse(localStorage.getItem('cvatClip')); from = 'last COPY'; }
   if (!data) return console.error('Nothing to paste. Run COPY first.');
 
@@ -36,17 +40,31 @@
     console.warn('Data is from a different job, matching labels by name.');
 
   let skipped = 0;
+  const skippedLabels = new Set();
   const states = [];
   for (const c of data.clip) {
+    const sourceName = typeof c.labelName === 'string' ? c.labelName.trim() : '';
+    const sourceId = c.labelId === null || c.labelId === undefined ? '' : String(c.labelId);
     const label =
-      job.labels.find(l => l.name === c.labelName) ||
-      job.labels.find(l => l.id === c.labelId);
-    if (!label) { skipped++; continue; }
+      job.labels.find(l => l.name === sourceName) ||
+      job.labels.find(l => l.name.trim().toLowerCase() === sourceName.toLowerCase()) ||
+      job.labels.find(l => String(l.id) === sourceId);
+    if (!label) {
+      skipped++;
+      skippedLabels.add(sourceName || sourceId || '(unknown)');
+      continue;
+    }
     states.push(new window.cvat.classes.ObjectState({
       frame, objectType: 'shape', shapeType: c.shapeType, label,
       points: c.points, occluded: c.occluded, zOrder: c.zOrder,
       rotation: c.rotation, attributes: c.attributes, source: c.source,
     }));
+  }
+
+  if (!states.length) {
+    return console.error(
+      `No annotations could be matched to labels in this job. Skipped labels: ${[...skippedLabels].join(', ')}`,
+    );
   }
 
   await job.annotations.put(states);
@@ -58,5 +76,5 @@
   } catch (e) { console.warn('UI refresh failed:', e); }
 
   console.log(`PASTED ${states.length} shapes onto frame ${frame} (from ${from})` +
-    (skipped ? `, ${skipped} skipped (label not in this job)` : '') + '. Press Save to keep them.');
+    (skipped ? `, ${skipped} skipped (${[...skippedLabels].join(', ')})` : '') + '. Press Save to keep them.');
 })();

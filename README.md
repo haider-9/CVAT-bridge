@@ -19,6 +19,11 @@ npm install
 npm run dev        # http://localhost:4321 (clipboard needs localhost or HTTPS)
 ```
 
+If the browser blocks the modern Clipboard API, COPY also tries the legacy browser
+copy command. Run the bookmarklet while the CVAT tab is focused; if both methods
+are blocked, the payload remains in CVAT's local storage and the console reports
+that it was not placed on the system clipboard.
+
 ## Build
 
 ```sh

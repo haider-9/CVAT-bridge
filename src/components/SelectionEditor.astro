@@ -1,7 +1,12 @@
 ---
+interface Props {
+	pasteScript: string;
+}
+
+const { pasteScript } = Astro.props;
 ---
 
-<div class="space-y-4">
+<div class="space-y-4" data-paste-script={pasteScript}>
 	<div>
 		<label for="se-input" class="mb-1 block text-sm font-medium"
 			>Paste copied data here</label
@@ -14,6 +19,7 @@
 			placeholder='{"v":1,"jobId":12,"frame":340,"clip":[...]}'></textarea>
 		<div class="mt-2">
 			<button id="se-paste" type="button" class="btn btn-secondary">Paste from clipboard</button>
+			<button id="se-load" type="button" class="btn btn-secondary">Load data</button>
 		</div>
 		<p
 			id="se-error"
@@ -37,12 +43,27 @@
 		<button id="se-sort" type="button" class="btn btn-secondary btn-sm">Sort: A&ndash;Z</button>
 	</div>
 
-	<ul id="se-groups" class="space-y-2"></ul>
+	<ul id="se-groups" class="scroll-area max-h-[34rem] space-y-2"></ul>
 
 	<div id="se-actions" class="hidden flex-wrap gap-2">
-		<button id="se-copy" type="button" class="btn btn-primary">Copy selection for PASTE</button>
+		<button id="se-copy" type="button" class="btn btn-primary">Copy full PASTE script</button>
 		<button id="se-download" type="button" class="btn btn-secondary">Download JSON</button>
 		<button id="se-clear" type="button" class="btn btn-secondary">Clear</button>
+	</div>
+
+	<div id="se-output" class="hidden">
+		<label for="se-output-text" class="mb-1 block text-sm font-medium"
+			>Full PASTE script</label
+		>
+		<textarea
+			id="se-output-text"
+			rows="6"
+			readonly
+			spellcheck="false"
+			class="scroll-area w-full rounded-xl border border-zinc-300 bg-zinc-50 p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900"></textarea>
+		<p class="mt-1 text-xs text-zinc-500">
+			This is a complete runnable script with the selected data embedded. Paste it into the CVAT console.
+		</p>
 	</div>
 
 	<p id="se-status" aria-live="polite" class="text-sm"></p>
@@ -71,6 +92,8 @@
 	const LS_KEY = 'cvatBridge.selection';
 
 	const input = document.getElementById('se-input') as HTMLTextAreaElement;
+	const pasteScript =
+		(document.querySelector('[data-paste-script]') as HTMLElement)?.dataset.pasteScript ?? '';
 	const errorEl = document.getElementById('se-error')!;
 	const summaryEl = document.getElementById('se-summary')!;
 	const jobEl = document.getElementById('se-job')!;
@@ -80,8 +103,11 @@
 	const toolbarEl = document.getElementById('se-toolbar')!;
 	const groupsEl = document.getElementById('se-groups')!;
 	const actionsEl = document.getElementById('se-actions')!;
+	const outputEl = document.getElementById('se-output')!;
+	const outputTextEl = document.getElementById('se-output-text') as HTMLTextAreaElement;
 	const statusEl = document.getElementById('se-status')!;
 	const copyBtn = document.getElementById('se-copy') as HTMLButtonElement;
+	const loadBtn = document.getElementById('se-load') as HTMLButtonElement;
 	const sortBtn = document.getElementById('se-sort') as HTMLButtonElement;
 	const undoBtn = document.getElementById('se-undo') as HTMLButtonElement;
 
@@ -221,6 +247,40 @@
 			labelCount: labels.size,
 			shapeCount: chosen.length,
 		};
+	}
+
+	function buildPasteScript(json: string): string {
+		const marker = 'const EMBEDDED_DATA = null;';
+		if (!pasteScript.includes(marker)) {
+			throw new Error('PASTE script template is missing its embedded data marker');
+		}
+		return pasteScript.replace(marker, `const EMBEDDED_DATA = ${json};`);
+	}
+
+	async function copyText(text: string): Promise<void> {
+		try {
+			if (navigator.clipboard?.writeText) {
+				await navigator.clipboard.writeText(text);
+				return;
+			}
+		} catch {
+			// Fall through to the legacy browser copy path.
+		}
+
+		const textarea = document.createElement('textarea');
+		textarea.value = text;
+		textarea.setAttribute('readonly', '');
+		textarea.style.position = 'fixed';
+		textarea.style.opacity = '0';
+		document.body.appendChild(textarea);
+		textarea.select();
+		let copied = false;
+		try {
+			copied = document.execCommand('copy');
+		} finally {
+			textarea.remove();
+		}
+		if (!copied) throw new Error('Clipboard write blocked');
 	}
 
 	// ---------- rendering ----------
@@ -364,18 +424,21 @@
 			summaryEl.classList.add('hidden');
 			toolbarEl.classList.add('hidden');
 			actionsEl.classList.add('hidden');
+			outputEl.classList.add('hidden');
 			return;
 		}
 
 		summaryEl.classList.remove('hidden');
 		toolbarEl.classList.remove('hidden');
 		actionsEl.classList.remove('hidden');
+		outputEl.classList.remove('hidden');
 		jobEl.textContent = meta.jobId === null ? '?' : String(meta.jobId);
 		frameEl.textContent = meta.frame === null ? '?' : String(meta.frame);
 		totalEl.textContent = String(live.length);
 		selEl.textContent = String(selectedCount);
 
 		copyBtn.disabled = selectedCount === 0;
+		outputTextEl.value = buildPasteScript(buildPayload().json);
 		undoBtn.disabled = undoStack.length === 0;
 		sortBtn.textContent = sortMode === 'az' ? 'Sort: A–Z' : 'Sort: by count';
 
@@ -386,9 +449,20 @@
 		} else {
 			rows.sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
 		}
+		const groupDetails = document.createElement('details');
+		groupDetails.className = 'rounded-lg border border-zinc-200 dark:border-zinc-800';
+		const groupSummary = document.createElement('summary');
+		groupSummary.className = 'cursor-pointer px-3 py-2 text-sm font-medium select-none';
+		groupSummary.textContent = `Labels (${rows.length}) · ${live.length} annotations`;
+		groupDetails.append(groupSummary);
+
+		const groupList = document.createElement('ul');
+		groupList.className = 'space-y-2 border-t border-zinc-200 p-2 dark:border-zinc-800';
 		for (const [name, group] of rows) {
-			groupsEl.append(labelRow(name, group));
+			groupList.append(labelRow(name, group));
 		}
+		groupDetails.append(groupList);
+		groupsEl.append(groupDetails);
 	}
 
 	// ---------- actions ----------
@@ -409,9 +483,12 @@
 		}
 	});
 
-	input.addEventListener('input', () => {
+	function loadInput() {
 		if (parseText(input.value)) setStatus('', '');
-	});
+	}
+
+	loadBtn.addEventListener('click', loadInput);
+	input.addEventListener('input', loadInput);
 
 	document.getElementById('se-all')!.addEventListener('click', () => {
 		for (const it of liveItems()) it.selected = true;
@@ -457,10 +534,11 @@
 
 	copyBtn.addEventListener('click', async () => {
 		const { json, labelCount, shapeCount } = buildPayload();
+		const script = buildPasteScript(json);
 		try {
-			await navigator.clipboard.writeText(json);
+			await copyText(script);
 			setStatus(
-				`${shapeCount} shape${shapeCount === 1 ? '' : 's'} from ${labelCount} label${labelCount === 1 ? '' : 's'} ready. Click PASTE in CVAT.`,
+				`${shapeCount} shape${shapeCount === 1 ? '' : 's'} from ${labelCount} label${labelCount === 1 ? '' : 's'} ready. Paste the full PASTE script into CVAT.`,
 				'ok',
 			);
 		} catch {
@@ -526,5 +604,9 @@
 		/* corrupted storage — start fresh */
 	}
 
-	render();
+	if (!items.length && input.value.trim()) {
+		parseText(input.value);
+	} else {
+		render();
+	}
 </script>
