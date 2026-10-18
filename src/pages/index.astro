@@ -109,42 +109,42 @@ const troubleshooting = [
 ---
 
 <Layout>
-	<main class="mx-auto max-w-4xl px-4 py-10 sm:px-6 sm:py-16">
+	<main class="editorial-shell mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-14">
 		<!-- 1. Hero -->
-		<header class="mb-14 text-center">
-			<div class="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-500/90 text-white shadow-lg shadow-indigo-500/15">
-				<svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current stroke-2">
-					<path d="M5 7h14M5 17h14M8 4l-3 3 3 3M16 14l3 3-3 3" stroke-linecap="round" stroke-linejoin="round" />
-				</svg>
+		<header class="editorial-hero mb-16">
+			<div class="editorial-kicker">
+				<span>Field notes / 01</span>
+				<span>CVAT utility</span>
 			</div>
-			<p class="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-400">CVAT utility</p>
-			<h1 class="text-3xl font-bold tracking-tight sm:text-5xl">
-				CVAT Copy/Paste Annotations
+			<div class="editorial-mark" aria-hidden="true">↗</div>
+			<h1 class="max-w-4xl text-5xl font-bold tracking-tight sm:text-7xl">
+				Move the work<br /><em>with you.</em>
 			</h1>
-			<p class="mx-auto mt-4 max-w-2xl text-base leading-7 text-zinc-600 dark:text-zinc-400">
+			<p class="editorial-dek mx-auto mt-6 max-w-2xl">
 				CVAT can’t copy annotations between frames — these two bookmarklets can,
 				with an optional editor to pick exactly which shapes travel.
 			</p>
 		</header>
 
 		<!-- 2. Install -->
-		<section id="install" class="mb-12 space-y-4">
-			<h2 class="text-xl font-semibold">Install</h2>
-			<p class="text-sm text-zinc-600 dark:text-zinc-400">
+		<section id="install" class="editorial-section mb-16 space-y-5">
+			<div class="section-heading"><span>02</span><h2>Install</h2></div>
+			<p class="editorial-copy">
 				Drag a link onto your bookmarks bar, or open the CVAT tab, open the console
 				(<kbd class="rounded border border-zinc-300 px-1 text-xs dark:border-zinc-700">Ctrl+Shift+J</kbd>)
 				and paste the code.
 			</p>
-			<div class="grid gap-4 sm:grid-cols-2">
+			<div class="grid gap-5 sm:grid-cols-2">
 				{
 					[
 						{ id: 'copy', title: 'COPY', desc: 'Runs on the source frame. Puts its shapes on the clipboard.', src: copySrc },
 						{ id: 'paste', title: 'PASTE', desc: 'Runs on the target frame. Pastes the selection (or last COPY).', src: pasteSrc },
 					].map((s) => (
-						<div class="flex flex-col gap-3 rounded-2xl border border-zinc-200/80 bg-white/70 p-5 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/60">
+						<div class="editorial-card flex flex-col gap-4 p-6">
 							<div>
-								<h3 class="font-semibold">{s.title}</h3>
-								<p class="text-sm text-zinc-600 dark:text-zinc-400">{s.desc}</p>
+								<div class="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">Bookmarklet</div>
+								<h3 class="text-2xl font-bold">{s.title}</h3>
+								<p class="mt-1 text-sm text-[var(--muted)]">{s.desc}</p>
 							</div>
 							<a
 								id={`bm-${s.id}`}
@@ -179,29 +179,29 @@ const troubleshooting = [
 		</section>
 
 		<!-- 3. How to use -->
-		<section class="mb-12">
-			<h2 class="mb-3 text-xl font-semibold">How to use</h2>
-			<ol class="ml-5 list-decimal space-y-2 text-sm text-zinc-700 dark:text-zinc-300">
-				{steps.map((s) => <li class="pl-1">{s}</li>)}
+		<section class="editorial-section mb-16">
+			<div class="section-heading"><span>03</span><h2>How to use</h2></div>
+			<ol class="editorial-steps">
+				{steps.map((s, i) => <li><span>{String(i + 1).padStart(2, '0')}</span><p>{s}</p></li>)}
 			</ol>
 		</section>
 
 		<!-- 4. Selection Editor -->
-		<section id="selection-editor" class="mb-12">
-			<h2 class="mb-1 text-xl font-semibold">Selection Editor</h2>
-			<p class="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+		<section id="selection-editor" class="editorial-section mb-16">
+			<div class="section-heading"><span>04</span><h2>Selection Editor</h2></div>
+			<p class="editorial-copy mb-5">
 				Optional: paste the copied data, remove what you don’t need, then send the
 				selection back to PASTE. Everything stays in your browser.
 			</p>
-			<div class="rounded-2xl border border-zinc-200/80 bg-white/70 p-4 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/60 sm:p-6">
+			<div class="editorial-card p-4 sm:p-7">
 				<SelectionEditor pasteScript={pasteSrc} />
 			</div>
 		</section>
 
 		<!-- 5. Options -->
-		<section class="mb-12">
-			<h2 class="mb-1 text-xl font-semibold">Options: filter labels in COPY</h2>
-			<p class="mb-3 text-sm text-zinc-600 dark:text-zinc-400">
+		<section class="editorial-section mb-16">
+			<div class="section-heading"><span>05</span><h2>Filter labels in COPY</h2></div>
+			<p class="editorial-copy mb-4">
 				The COPY script has a <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-800">LABELS</code>
 				filter. Leave it empty (<code class="rounded bg-zinc-100 px-1 dark:bg-zinc-800">[]</code>)
 				to copy every shape, or list the labels you care about, e.g.
@@ -222,9 +222,9 @@ const troubleshooting = [
 		</section>
 
 		<!-- 6. Troubleshooting -->
-		<section class="mb-12">
-			<h2 class="mb-3 text-xl font-semibold">Troubleshooting</h2>
-			<div class="divide-y divide-zinc-200 rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+		<section class="editorial-section mb-16">
+			<div class="section-heading"><span>06</span><h2>Troubleshooting</h2></div>
+			<div class="editorial-faq divide-y">
 				{
 					troubleshooting.map((t) => (
 						<details class="group p-4">
@@ -237,7 +237,7 @@ const troubleshooting = [
 		</section>
 
 		<!-- 7. Footer -->
-		<footer class="border-t border-zinc-200 pt-6 text-sm text-zinc-500 dark:border-zinc-800">
+		<footer class="editorial-footer pt-6 text-sm">
 			<p>
 				The scripts reach into CVAT’s internal React/Redux state, so they may break on
 				other CVAT versions. Everything runs in your browser — no data is sent anywhere.
