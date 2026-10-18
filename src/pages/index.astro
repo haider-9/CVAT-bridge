@@ -1,0 +1,301 @@
+---
+import { Code } from 'astro:components';
+import Layout from '../layouts/Layout.astro';
+import SelectionEditor from '../components/SelectionEditor.astro';
+import copySrc from '../scripts/copy.js?raw';
+import pasteSrc from '../scripts/paste.js?raw';
+
+/** Strip comments and collapse whitespace (string-aware) for the bookmarklets. */
+function minify(src: string): string {
+	let out = '';
+	let i = 0;
+	let mode: 'code' | 'line' | 'block' | 'str' = 'code';
+	let quote = '';
+	const punct = '{}();,.[]';
+	while (i < src.length) {
+		const c = src[i];
+		const n = src[i + 1];
+		if (mode === 'line') {
+			if (c === '\n') {
+				mode = 'code';
+				out += ' ';
+			}
+			i++;
+			continue;
+		}
+		if (mode === 'block') {
+			if (c === '*' && n === '/') {
+				mode = 'code';
+				i += 2;
+				continue;
+			}
+			if (c === '\n') out += ' ';
+			i++;
+			continue;
+		}
+		if (mode === 'str') {
+			out += c;
+			if (c === '\\') {
+				out += n ?? '';
+				i += 2;
+				continue;
+			}
+			if (c === quote) mode = 'code';
+			i++;
+			continue;
+		}
+		if (c === '/' && n === '/') {
+			mode = 'line';
+			i += 2;
+			continue;
+		}
+		if (c === '/' && n === '*') {
+			mode = 'block';
+			i += 2;
+			continue;
+		}
+		if (c === "'" || c === '"' || c === '`') {
+			mode = 'str';
+			quote = c;
+			out += c;
+			i++;
+			continue;
+		}
+		if (c === ' ' || c === '\n' || c === '\t' || c === '\r') {
+			while (i < src.length && /\s/.test(src[i])) i++;
+			const prev = out.slice(-1);
+			const next = src[i] ?? '';
+			if (!punct.includes(prev) && !punct.includes(next)) out += ' ';
+			continue;
+		}
+		out += c;
+		i++;
+	}
+	return out.trim();
+}
+
+const copyBm = minify(copySrc);
+const pasteBm = minify(pasteSrc);
+
+const steps = [
+	'Open the source frame in CVAT and click COPY.',
+	'(Optional) Open this site, paste into the Selection Editor, pick the labels you want, click "Copy selection".',
+	'Go to the target frame in CVAT and click PASTE.',
+	'Review the boxes, then press CVAT’s own Save button. Nothing reaches the server until then.',
+];
+
+const troubleshooting = [
+	{
+		q: 'Chrome blocks pasting into the console',
+		a: 'Click into the console once and type allow pasting, then press Enter. Chrome only asks this the first time.',
+	},
+	{
+		q: 'Pasted boxes don’t show up',
+		a: 'Change frame and come back — the canvas sometimes doesn’t redraw after an internal paste.',
+	},
+	{
+		q: 'The Save button is greyed out',
+		a: 'Nudge any box slightly. CVAT only marks the job as dirty after a real edit, and the paste counts as one.',
+	},
+	{
+		q: 'Clipboard is blocked',
+		a: 'Allow clipboard permission for this site (the padlock in the address bar). If PASTE can’t read the clipboard it falls back to the last COPY, which contains all labels.',
+	},
+	{
+		q: 'Wrong shapes were pasted',
+		a: 'The clipboard was overwritten by something else after "Copy selection". Redo "Copy selection" here, then PASTE again.',
+	},
+];
+---
+
+<Layout>
+	<main class="mx-auto max-w-3xl px-4 py-12 sm:py-16">
+		<!-- 1. Hero -->
+		<header class="mb-12 text-center">
+			<h1 class="text-3xl font-bold tracking-tight sm:text-4xl">
+				CVAT Copy/Paste Annotations
+			</h1>
+			<p class="mx-auto mt-3 max-w-xl text-zinc-600 dark:text-zinc-400">
+				CVAT can’t copy annotations between frames — these two bookmarklets can,
+				with an optional editor to pick exactly which shapes travel.
+			</p>
+		</header>
+
+		<!-- 2. Install -->
+		<section id="install" class="mb-12 space-y-4">
+			<h2 class="text-xl font-semibold">Install</h2>
+			<p class="text-sm text-zinc-600 dark:text-zinc-400">
+				Drag a link onto your bookmarks bar, or open the CVAT tab, open the console
+				(<kbd class="rounded border border-zinc-300 px-1 text-xs dark:border-zinc-700">Ctrl+Shift+J</kbd>)
+				and paste the code.
+			</p>
+			<div class="grid gap-4 sm:grid-cols-2">
+				{
+					[
+						{ id: 'copy', title: 'COPY', desc: 'Runs on the source frame. Puts its shapes on the clipboard.', src: copySrc },
+						{ id: 'paste', title: 'PASTE', desc: 'Runs on the target frame. Pastes the selection (or last COPY).', src: pasteSrc },
+					].map((s) => (
+						<div class="flex flex-col gap-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+							<div>
+								<h3 class="font-semibold">{s.title}</h3>
+								<p class="text-sm text-zinc-600 dark:text-zinc-400">{s.desc}</p>
+							</div>
+							<a
+								id={`bm-${s.id}`}
+								href="#install"
+								title="Drag me to your bookmarks bar"
+								class="inline-block self-start rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+							>
+								⤒ {s.title} bookmarklet
+							</a>
+							<button
+								id={`copy-code-${s.id}`}
+								type="button"
+								class="btn btn-secondary self-start"
+							>
+								Copy code
+							</button>
+							<details>
+								<summary class="cursor-pointer text-sm text-zinc-600 dark:text-zinc-400">
+									Show source
+								</summary>
+								<pre
+									class="mt-2 max-h-96 overflow-auto rounded-lg bg-zinc-900 text-xs"><Code
+										code={s.src}
+										lang="js"
+										theme="github-dark"
+									/></pre>
+							</details>
+						</div>
+					))
+				}
+			</div>
+		</section>
+
+		<!-- 3. How to use -->
+		<section class="mb-12">
+			<h2 class="mb-3 text-xl font-semibold">How to use</h2>
+			<ol class="ml-5 list-decimal space-y-2 text-sm text-zinc-700 dark:text-zinc-300">
+				{steps.map((s) => <li class="pl-1">{s}</li>)}
+			</ol>
+		</section>
+
+		<!-- 4. Selection Editor -->
+		<section id="selection-editor" class="mb-12">
+			<h2 class="mb-1 text-xl font-semibold">Selection Editor</h2>
+			<p class="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+				Optional: paste the copied data, remove what you don’t need, then send the
+				selection back to PASTE. Everything stays in your browser.
+			</p>
+			<SelectionEditor />
+		</section>
+
+		<!-- 5. Options -->
+		<section class="mb-12">
+			<h2 class="mb-1 text-xl font-semibold">Options: filter labels in COPY</h2>
+			<p class="mb-3 text-sm text-zinc-600 dark:text-zinc-400">
+				The COPY script has a <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-800">LABELS</code>
+				filter. Leave it empty (<code class="rounded bg-zinc-100 px-1 dark:bg-zinc-800">[]</code>)
+				to copy every shape, or list the labels you care about, e.g.
+				<code class="rounded bg-zinc-100 px-1 dark:bg-zinc-800">['gate']</code>.
+				Editing the field below regenerates the COPY bookmarklet and its code.
+			</p>
+			<label for="labels-input" class="mb-1 block text-sm font-medium"
+				>LABELS array</label
+			>
+			<input
+				id="labels-input"
+				type="text"
+				defaultValue="[]"
+				spellcheck="false"
+				class="w-full rounded-lg border border-zinc-300 bg-zinc-50 p-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900"
+			/>
+			<p id="labels-hint" class="hidden mt-1 text-sm text-red-600 dark:text-red-400"></p>
+		</section>
+
+		<!-- 6. Troubleshooting -->
+		<section class="mb-12">
+			<h2 class="mb-3 text-xl font-semibold">Troubleshooting</h2>
+			<div class="divide-y divide-zinc-200 rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+				{
+					troubleshooting.map((t) => (
+						<details class="group p-4">
+							<summary class="cursor-pointer font-medium">{t.q}</summary>
+							<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">{t.a}</p>
+						</details>
+					))
+				}
+			</div>
+		</section>
+
+		<!-- 7. Footer -->
+		<footer class="border-t border-zinc-200 pt-6 text-sm text-zinc-500 dark:border-zinc-800">
+			<p>
+				The scripts reach into CVAT’s internal React/Redux state, so they may break on
+				other CVAT versions. Everything runs in your browser — no data is sent anywhere.
+			</p>
+		</footer>
+	</main>
+</Layout>
+
+<script is:inline define:vars={{ copyRaw: copySrc, pasteRaw: pasteSrc, copyBm, pasteBm }}>
+	(function () {
+		var currentCopyRaw = copyRaw;
+		var currentCopyBm = copyBm;
+
+		function apply(id, code) {
+			var a = document.getElementById(id);
+			// Astro may sanitize javascript: hrefs, so set them at runtime.
+			if (a) a.href = 'javascript:' + encodeURIComponent(code);
+		}
+		apply('bm-copy', copyBm);
+		apply('bm-paste', pasteBm);
+
+		function flash(btn, text) {
+			btn.textContent = text;
+			setTimeout(function () {
+				btn.textContent = 'Copy code';
+			}, 1500);
+		}
+
+		document.getElementById('copy-code-copy').addEventListener('click', function () {
+			var btn = this;
+			navigator.clipboard
+				.writeText(currentCopyRaw)
+				.then(function () {
+					flash(btn, 'Copied!');
+				})
+				.catch(function () {
+					flash(btn, 'Clipboard blocked');
+				});
+		});
+
+		document.getElementById('copy-code-paste').addEventListener('click', function () {
+			var btn = this;
+			navigator.clipboard
+				.writeText(pasteRaw)
+				.then(function () {
+					flash(btn, 'Copied!');
+				})
+				.catch(function () {
+					flash(btn, 'Clipboard blocked');
+				});
+		});
+
+		var input = document.getElementById('labels-input');
+		var hint = document.getElementById('labels-hint');
+		input.addEventListener('input', function () {
+			var v = input.value.trim() || '[]';
+			var ok = /^\[\s*('[^']*'|"[^"]*")?(\s*,\s*('[^']*'|"[^"]*"))*\s*\]$/.test(v);
+			if (!ok) {
+				hint.textContent = "Use JS array syntax, e.g. [] or ['gate']";
+				hint.classList.remove('hidden');
+				return;
+			}
+			hint.classList.add('hidden');
+			currentCopyRaw = copyRaw.replace(/const LABELS = \[[^\]]*\]/, 'const LABELS = ' + v);
+			currentCopyBm = copyBm.replace(/const LABELS\s*=\s*\[[^\]]*\]/, 'const LABELS=' + v);
+			apply('bm-copy', currentCopyBm);
+		});
+	})();
+</script>

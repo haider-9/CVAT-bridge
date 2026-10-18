@@ -1,0 +1,530 @@
+---
+---
+
+<div class="space-y-4">
+	<div>
+		<label for="se-input" class="mb-1 block text-sm font-medium"
+			>Paste copied data here</label
+		>
+		<textarea
+			id="se-input"
+			rows="4"
+			spellcheck="false"
+			class="w-full rounded-lg border border-zinc-300 bg-zinc-50 p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900"
+			placeholder='{"v":1,"jobId":12,"frame":340,"clip":[...]}'></textarea>
+		<div class="mt-2">
+			<button id="se-paste" type="button" class="btn btn-secondary">Paste from clipboard</button>
+		</div>
+		<p
+			id="se-error"
+			role="alert"
+			class="mt-2 hidden text-sm text-red-600 dark:text-red-400"
+		>
+		</p>
+	</div>
+
+	<p id="se-summary" class="hidden text-sm text-zinc-600 dark:text-zinc-400">
+		Job <b id="se-job"></b> &middot; source frame <b id="se-frame"></b> &middot;
+		<b id="se-total"></b> shapes &middot; <b id="se-selcount"></b> selected
+	</p>
+
+	<div id="se-toolbar" class="hidden flex-wrap items-center gap-2 text-sm">
+		<button id="se-all" type="button" class="btn btn-secondary btn-sm">Select all</button>
+		<button id="se-none" type="button" class="btn btn-secondary btn-sm">Select none</button>
+		<button id="se-invert" type="button" class="btn btn-secondary btn-sm">Invert</button>
+		<button id="se-undo" type="button" class="btn btn-secondary btn-sm">Undo last delete</button>
+		<button id="se-reset" type="button" class="btn btn-secondary btn-sm">Reset to original</button>
+		<button id="se-sort" type="button" class="btn btn-secondary btn-sm">Sort: A&ndash;Z</button>
+	</div>
+
+	<ul id="se-groups" class="space-y-2"></ul>
+
+	<div id="se-actions" class="hidden flex-wrap gap-2">
+		<button id="se-copy" type="button" class="btn btn-primary">Copy selection for PASTE</button>
+		<button id="se-download" type="button" class="btn btn-secondary">Download JSON</button>
+		<button id="se-clear" type="button" class="btn btn-secondary">Clear</button>
+	</div>
+
+	<p id="se-status" aria-live="polite" class="text-sm"></p>
+</div>
+
+<script>
+	interface Shape {
+		labelId: unknown;
+		labelName: string;
+		shapeType: string;
+		points: number[];
+		occluded: boolean;
+		zOrder: number;
+		rotation: number;
+		attributes: Record<string, unknown>;
+		source: string;
+	}
+
+	interface Item {
+		id: number;
+		shape: Shape;
+		selected: boolean;
+		deleted: boolean;
+	}
+
+	const LS_KEY = 'cvatBridge.selection';
+
+	const input = document.getElementById('se-input') as HTMLTextAreaElement;
+	const errorEl = document.getElementById('se-error')!;
+	const summaryEl = document.getElementById('se-summary')!;
+	const jobEl = document.getElementById('se-job')!;
+	const frameEl = document.getElementById('se-frame')!;
+	const totalEl = document.getElementById('se-total')!;
+	const selEl = document.getElementById('se-selcount')!;
+	const toolbarEl = document.getElementById('se-toolbar')!;
+	const groupsEl = document.getElementById('se-groups')!;
+	const actionsEl = document.getElementById('se-actions')!;
+	const statusEl = document.getElementById('se-status')!;
+	const copyBtn = document.getElementById('se-copy') as HTMLButtonElement;
+	const sortBtn = document.getElementById('se-sort') as HTMLButtonElement;
+	const undoBtn = document.getElementById('se-undo') as HTMLButtonElement;
+
+	let items: Item[] = [];
+	let original: Item[] = [];
+	let meta: { jobId: number | null; frame: number | null } = { jobId: null, frame: null };
+	let undoStack: number[][] = [];
+	let sortMode: 'az' | 'count' = 'az';
+	let nextId = 1;
+
+	// ---------- data ----------
+
+	function normalize(s: unknown): Shape {
+		const o = (s ?? {}) as Record<string, unknown>;
+		const pts = Array.isArray(o.points)
+			? o.points.map((n) => (typeof n === 'number' ? n : Number(n) || 0))
+			: [];
+		return {
+			labelId: o.labelId ?? null,
+			labelName: typeof o.labelName === 'string' && o.labelName ? o.labelName : 'unknown',
+			shapeType: typeof o.shapeType === 'string' ? o.shapeType : 'rectangle',
+			points: pts,
+			occluded: !!o.occluded,
+			zOrder: typeof o.zOrder === 'number' ? o.zOrder : 0,
+			rotation: typeof o.rotation === 'number' ? o.rotation : 0,
+			attributes:
+				o.attributes && typeof o.attributes === 'object'
+					? { ...(o.attributes as Record<string, unknown>) }
+					: {},
+			source: typeof o.source === 'string' ? o.source : 'manual',
+		};
+	}
+
+	function cloneItems(list: Item[]): Item[] {
+		return list.map((i) => ({
+			id: i.id,
+			shape: { ...i.shape, points: [...i.shape.points], attributes: { ...i.shape.attributes } },
+			selected: i.selected,
+			deleted: i.deleted,
+		}));
+	}
+
+	function showError(msg: string) {
+		errorEl.textContent = msg;
+		errorEl.classList.remove('hidden');
+	}
+
+	function hideError() {
+		errorEl.textContent = '';
+		errorEl.classList.add('hidden');
+	}
+
+	function setStatus(msg: string, kind: 'ok' | 'error' | '') {
+		statusEl.textContent = msg;
+		statusEl.classList.toggle('text-emerald-600', kind === 'ok');
+		statusEl.classList.toggle('text-emerald-400', kind === 'ok');
+		statusEl.classList.toggle('text-red-600', kind === 'error');
+		statusEl.classList.toggle('text-red-400', kind === 'error');
+	}
+
+	function save() {
+		try {
+			localStorage.setItem(LS_KEY, JSON.stringify({ meta, items }));
+		} catch {
+			/* private mode / quota — ignore */
+		}
+	}
+
+	function parseText(text: string): boolean {
+		const t = text.trim();
+		if (!t) {
+			items = [];
+			original = [];
+			meta = { jobId: null, frame: null };
+			undoStack = [];
+			hideError();
+			save();
+			render();
+			return false;
+		}
+		let d: unknown;
+		try {
+			d = JSON.parse(t);
+		} catch {
+			showError('That is not valid JSON. Run COPY in CVAT and paste again.');
+			return false;
+		}
+		const obj = (d ?? {}) as Record<string, unknown>;
+		if (obj.v !== 1 || !Array.isArray(obj.clip)) {
+			showError('Unrecognized data — expected version 1 with a "clip" array. Run COPY in CVAT again.');
+			return false;
+		}
+		hideError();
+		nextId = 1;
+		items = (obj.clip as unknown[]).map((s): Item => {
+			const shape = normalize(s);
+			return { id: nextId++, shape, selected: true, deleted: false };
+		});
+		original = cloneItems(items);
+		meta = {
+			jobId: typeof obj.jobId === 'number' ? obj.jobId : null,
+			frame: typeof obj.frame === 'number' ? obj.frame : null,
+		};
+		undoStack = [];
+		save();
+		render();
+		return true;
+	}
+
+	function liveItems(): Item[] {
+		return items.filter((i) => !i.deleted);
+	}
+
+	function groupByLabel(list: Item[]): Map<string, Item[]> {
+		const groups = new Map<string, Item[]>();
+		for (const it of list) {
+			const key = it.shape.labelName;
+			const arr = groups.get(key);
+			if (arr) arr.push(it);
+			else groups.set(key, [it]);
+		}
+		return groups;
+	}
+
+	function buildPayload(): { json: string; labelCount: number; shapeCount: number } {
+		const chosen = liveItems().filter((i) => i.selected);
+		const labels = new Set(chosen.map((i) => i.shape.labelName));
+		const payload = {
+			v: 1,
+			jobId: meta.jobId,
+			frame: meta.frame,
+			clip: chosen.map((i) => i.shape),
+			sel: true,
+		};
+		return {
+			json: JSON.stringify(payload),
+			labelCount: labels.size,
+			shapeCount: chosen.length,
+		};
+	}
+
+	// ---------- rendering ----------
+
+	function fmtBox(pts: number[]): string {
+		const xs: number[] = [];
+		const ys: number[] = [];
+		for (let i = 0; i + 1 < pts.length; i += 2) {
+			xs.push(pts[i]);
+			ys.push(pts[i + 1]);
+		}
+		if (!xs.length) return 'no points';
+		const r = (n: number) => Math.round(n * 10) / 10;
+		const x1 = Math.min(...xs);
+		const y1 = Math.min(...ys);
+		const x2 = Math.max(...xs);
+		const y2 = Math.max(...ys);
+		return `${r(x1)}, ${r(y1)} → ${r(x2)}, ${r(y2)} (${r(x2 - x1)} × ${r(y2 - y1)})`;
+	}
+
+	function labelRow(name: string, group: Item[]): HTMLLIElement {
+		const li = document.createElement('li');
+		li.className = 'rounded-lg border border-zinc-200 dark:border-zinc-800';
+
+		const header = document.createElement('div');
+		header.className = 'flex flex-wrap items-center gap-2 p-2';
+
+		const cb = document.createElement('input');
+		cb.type = 'checkbox';
+		cb.className = 'h-4 w-4 accent-indigo-600';
+		cb.checked = group.every((i) => i.selected);
+		cb.indeterminate = !cb.checked && group.some((i) => i.selected);
+		cb.setAttribute('aria-label', `Include label ${name}`);
+		cb.addEventListener('change', () => {
+			for (const it of group) it.selected = cb.checked;
+			save();
+			render();
+		});
+		header.append(cb);
+
+		const nameEl = document.createElement('span');
+		nameEl.className = 'grow font-medium';
+		nameEl.textContent = name;
+		header.append(nameEl);
+
+		const count = document.createElement('span');
+		count.className = 'text-sm text-zinc-500';
+		count.textContent = `${group.length} shape${group.length === 1 ? '' : 's'}`;
+		header.append(count);
+
+		const only = document.createElement('button');
+		only.type = 'button';
+		only.className = 'btn btn-secondary btn-sm';
+		only.textContent = 'Only this';
+		only.addEventListener('click', () => {
+			const names = new Set([name]);
+			for (const it of items) {
+				if (it.deleted) continue;
+				it.selected = names.has(it.shape.labelName);
+			}
+			save();
+			render();
+		});
+		header.append(only);
+
+		const del = document.createElement('button');
+		del.type = 'button';
+		del.className = 'btn btn-danger btn-sm';
+		del.textContent = 'Delete';
+		del.addEventListener('click', () => {
+			undoStack.push(group.map((i) => i.id));
+			for (const it of group) it.deleted = true;
+			save();
+			render();
+		});
+		header.append(del);
+
+		li.append(header);
+
+		const details = document.createElement('details');
+		const summaryEl2 = document.createElement('summary');
+		summaryEl2.className = 'cursor-pointer px-2 py-1 text-sm text-zinc-500 select-none';
+		summaryEl2.textContent = 'Show boxes';
+		details.append(summaryEl2);
+
+		const list = document.createElement('ul');
+		list.className = 'border-t border-zinc-200 dark:border-zinc-800';
+		group.forEach((it, idx) => {
+			const row = document.createElement('li');
+			row.className = 'flex flex-wrap items-center gap-2 border-b border-zinc-100 px-2 py-1 text-sm last:border-b-0 dark:border-zinc-900';
+
+			const boxCb = document.createElement('input');
+			boxCb.type = 'checkbox';
+			boxCb.className = 'h-4 w-4 accent-indigo-600';
+			boxCb.checked = it.selected;
+			boxCb.setAttribute('aria-label', `Include box ${idx + 1} of ${name}`);
+			boxCb.addEventListener('change', () => {
+				it.selected = boxCb.checked;
+				save();
+				render();
+			});
+			row.append(boxCb);
+
+			const num = document.createElement('span');
+			num.className = 'w-6 shrink-0 text-zinc-500';
+			num.textContent = `${idx + 1}.`;
+			row.append(num);
+
+			const info = document.createElement('span');
+			info.className = 'grow font-mono text-xs';
+			info.textContent = fmtBox(it.shape.points);
+			row.append(info);
+
+			const boxDel = document.createElement('button');
+			boxDel.type = 'button';
+			boxDel.className = 'btn btn-danger btn-sm';
+			boxDel.textContent = 'Delete';
+			boxDel.setAttribute('aria-label', `Delete box ${idx + 1} of ${name}`);
+			boxDel.addEventListener('click', () => {
+				undoStack.push([it.id]);
+				it.deleted = true;
+				save();
+				render();
+			});
+			row.append(boxDel);
+
+			list.append(row);
+		});
+		details.append(list);
+		li.append(details);
+		return li;
+	}
+
+	function render() {
+		const live = liveItems();
+		const selectedCount = live.filter((i) => i.selected).length;
+
+		groupsEl.replaceChildren();
+
+		if (!live.length) {
+			summaryEl.classList.add('hidden');
+			toolbarEl.classList.add('hidden');
+			actionsEl.classList.add('hidden');
+			return;
+		}
+
+		summaryEl.classList.remove('hidden');
+		toolbarEl.classList.remove('hidden');
+		actionsEl.classList.remove('hidden');
+		jobEl.textContent = meta.jobId === null ? '?' : String(meta.jobId);
+		frameEl.textContent = meta.frame === null ? '?' : String(meta.frame);
+		totalEl.textContent = String(live.length);
+		selEl.textContent = String(selectedCount);
+
+		copyBtn.disabled = selectedCount === 0;
+		undoBtn.disabled = undoStack.length === 0;
+		sortBtn.textContent = sortMode === 'az' ? 'Sort: A–Z' : 'Sort: by count';
+
+		const groups = groupByLabel(live);
+		const rows = [...groups.entries()];
+		if (sortMode === 'az') {
+			rows.sort((a, b) => a[0].localeCompare(b[0]));
+		} else {
+			rows.sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+		}
+		for (const [name, group] of rows) {
+			groupsEl.append(labelRow(name, group));
+		}
+	}
+
+	// ---------- actions ----------
+
+	(document.getElementById('se-paste') as HTMLButtonElement).addEventListener('click', async () => {
+		try {
+			const text = await navigator.clipboard.readText();
+			if (!text.trim()) {
+				showError('The clipboard is empty. Run COPY in CVAT first.');
+				return;
+			}
+			input.value = text;
+			if (parseText(text)) setStatus('Data loaded. Pick the shapes you want.', 'ok');
+		} catch {
+			showError(
+				'Clipboard read was blocked. Paste manually into the box above (Ctrl/Cmd+V), or allow clipboard permission for this site.',
+			);
+		}
+	});
+
+	input.addEventListener('input', () => {
+		if (parseText(input.value)) setStatus('', '');
+	});
+
+	document.getElementById('se-all')!.addEventListener('click', () => {
+		for (const it of liveItems()) it.selected = true;
+		save();
+		render();
+	});
+
+	document.getElementById('se-none')!.addEventListener('click', () => {
+		for (const it of liveItems()) it.selected = false;
+		save();
+		render();
+	});
+
+	document.getElementById('se-invert')!.addEventListener('click', () => {
+		for (const it of liveItems()) it.selected = !it.selected;
+		save();
+		render();
+	});
+
+	undoBtn.addEventListener('click', () => {
+		const ids = undoStack.pop();
+		if (!ids) return;
+		const set = new Set(ids);
+		for (const it of items) {
+			if (set.has(it.id)) it.deleted = false;
+		}
+		save();
+		render();
+	});
+
+	document.getElementById('se-reset')!.addEventListener('click', () => {
+		items = cloneItems(original);
+		undoStack = [];
+		save();
+		render();
+		setStatus('Reset to the original COPY data.', '');
+	});
+
+	sortBtn.addEventListener('click', () => {
+		sortMode = sortMode === 'az' ? 'count' : 'az';
+		render();
+	});
+
+	copyBtn.addEventListener('click', async () => {
+		const { json, labelCount, shapeCount } = buildPayload();
+		try {
+			await navigator.clipboard.writeText(json);
+			setStatus(
+				`${shapeCount} shape${shapeCount === 1 ? '' : 's'} from ${labelCount} label${labelCount === 1 ? '' : 's'} ready. Click PASTE in CVAT.`,
+				'ok',
+			);
+		} catch {
+			setStatus('Clipboard write was blocked. Allow clipboard permission for this site and try again.', 'error');
+		}
+	});
+
+	document.getElementById('se-download')!.addEventListener('click', () => {
+		const { json } = buildPayload();
+		const blob = new Blob([json], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = 'cvat-selection.json';
+		a.click();
+		URL.revokeObjectURL(url);
+	});
+
+	document.getElementById('se-clear')!.addEventListener('click', () => {
+		items = [];
+		original = [];
+		meta = { jobId: null, frame: null };
+		undoStack = [];
+		input.value = '';
+		hideError();
+		try {
+			localStorage.removeItem(LS_KEY);
+		} catch {
+			/* ignore */
+		}
+		render();
+		setStatus('Cleared.', '');
+	});
+
+	// ---------- restore from localStorage ----------
+
+	try {
+		const saved = localStorage.getItem(LS_KEY);
+		if (saved) {
+			const d = JSON.parse(saved) as { meta: typeof meta; items: Item[] };
+			if (Array.isArray(d.items) && d.items.length) {
+				items = d.items.map((i) => ({
+					id: i.id,
+					shape: normalize(i.shape),
+					selected: !!i.selected,
+					deleted: !!i.deleted,
+				}));
+				nextId = Math.max(...items.map((i) => i.id)) + 1;
+				original = items.filter((i) => !i.deleted).map((i) => ({ ...i, deleted: false }));
+				original = original.map((i) => ({ ...i, shape: normalize(i.shape) }));
+				meta = d.meta ?? { jobId: null, frame: null };
+				input.value = JSON.stringify({
+					v: 1,
+					jobId: meta.jobId,
+					frame: meta.frame,
+					clip: items.map((i) => i.shape),
+				});
+				setStatus('Restored your previous working set.', '');
+				render();
+			}
+		}
+	} catch {
+		/* corrupted storage — start fresh */
+	}
+
+	render();
+</script>
