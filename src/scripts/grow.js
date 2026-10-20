@@ -42,11 +42,12 @@
   const resizeShape = (s, d) => {
     const pts = s.points;
     if (!Array.isArray(pts) || pts.length !== 4) return false; // rectangles (and ellipse bboxes) only
-    const l = d.l || 0, r = d.r || 0, t = d.t || 0, b = d.b || 0;
-    const x1 = Math.min(pts[0], pts[2]) - l, x2 = Math.max(pts[0], pts[2]) + r;
-    const y1 = Math.min(pts[1], pts[3]) - t, y2 = Math.max(pts[1], pts[3]) + b;
-    if (!(x2 - x1 > 0) || !(y2 - y1 > 0)) return false;
-    s.points = [x1, y1, x2, y2];
+    const x1 = Math.min(pts[0], pts[2]), x2 = Math.max(pts[0], pts[2]);
+    const y1 = Math.min(pts[1], pts[3]), y2 = Math.max(pts[1], pts[3]);
+    const nw = (x2 - x1) + 2 * d, nh = (y2 - y1) + 2 * d;
+    if (!(nw > 0) || !(nh > 0)) return false;
+    const ax = x1 - d, ay = y1 - d;
+    s.points = [ax, ay, ax + nw, ay + nh];
     return true;
   };
 
@@ -103,50 +104,8 @@
   sizeRow.appendChild(px);
   panel.appendChild(sizeRow);
 
-  const sideState = { l: true, r: true, t: true, b: true };
-  const dirRow = document.createElement('div');
-  dirRow.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:4px;';
-  const dirLabel = document.createElement('span');
-  dirLabel.textContent = 'sides:';
-  dirLabel.style.cssText = 'font-weight:700;';
-  dirRow.appendChild(dirLabel);
-  const sideBtns = {};
-  const mkSide = (key, text, title) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = text;
-    b.title = title;
-    b.addEventListener('click', () => {
-      if (key === 'all') {
-        const on = !(sideState.l && sideState.r && sideState.t && sideState.b);
-        sideState.l = sideState.r = sideState.t = sideState.b = on;
-      } else {
-        sideState[key] = !sideState[key];
-      }
-      syncSides();
-    });
-    sideBtns[key] = b;
-    dirRow.appendChild(b);
-  };
-  const syncSides = () => {
-    const on = 'background:#b54532;border-color:#b54532;color:#fff;';
-    const off = 'background:#fff;border-color:#cfc8bb;color:#000;';
-    const allOn = sideState.l && sideState.r && sideState.t && sideState.b;
-    for (const [key, b] of Object.entries(sideBtns)) {
-      const active = key === 'all' ? allOn : sideState[key];
-      b.style.cssText = 'padding:3px 8px;border:1px solid #cfc8bb;border-radius:4px;cursor:pointer;font:inherit;font-size:12px;font-weight:700;' + (active ? on : off);
-    }
-  };
-  mkSide('all', 'All', 'Toggle every side');
-  mkSide('t', 'Top', 'Top edge');
-  mkSide('r', 'Right', 'Right edge');
-  mkSide('b', 'Bottom', 'Bottom edge');
-  mkSide('l', 'Left', 'Left edge');
-  syncSides();
-  panel.appendChild(dirRow);
-
   const hint = document.createElement('div');
-  hint.textContent = 'Each selected side moves out (or in when shrinking) by this value. Preview only — nothing is sent to CVAT until you press Apply, and nothing reaches the server until CVAT Save.';
+  hint.textContent = 'Width and height each grow by 2 × this value. Preview only — nothing is sent to CVAT until you press Apply, and nothing reaches the server until CVAT Save.';
   hint.style.cssText = 'color:#555;font-size:12px;margin-bottom:6px;';
   panel.appendChild(hint);
 
@@ -211,9 +170,7 @@
   const preview = dir => {
     const amount = Number(px.value);
     if (!Number.isFinite(amount) || amount <= 0) return setStatus('Enter a px value above 0.', true);
-    const active = Object.keys(sideState).filter(k => sideState[k]);
-    if (!active.length) return setStatus('Pick at least one side.', true);
-    const delta = { l: sideState.l ? dir * amount : 0, r: sideState.r ? dir * amount : 0, t: sideState.t ? dir * amount : 0, b: sideState.b ? dir * amount : 0 };
+    const delta = dir * amount;
     let changed = 0, skipped = 0;
     for (const s of states) {
       if (!checked.has(s.label.name)) continue;
@@ -224,12 +181,9 @@
     applyBtn.disabled = false;
     applyBtn.style.opacity = '1';
     const verb = dir > 0 ? 'grown' : 'shrunk';
-    const allOn = active.length === 4;
-    const sideNames = { l: 'left', r: 'right', t: 'top', b: 'bottom' };
-    const where = allOn ? 'per side' : `on the ${active.map(k => sideNames[k]).join(', ')} side${active.length === 1 ? '' : 's'}`;
-    setStatus(`Preview: ${changed} box${changed === 1 ? '' : 'es'} ${verb} by ${amount} px ${where}` +
+    setStatus(`Preview: ${changed} box${changed === 1 ? '' : 'es'} ${verb} by ${amount} px per side` +
       (skipped ? `, ${skipped} skipped` : '') + '. Check the canvas — nothing is saved yet.');
-    console.log(`GROW preview frame ${frame}: ${changed} boxes ${verb} ${amount}px ${where}, no API calls.`);
+    console.log(`GROW preview frame ${frame}: ${changed} boxes ${verb} ${amount}px per side, no API calls.`);
   };
 
   const commit = async () => {
