@@ -4,6 +4,7 @@ import Layout from '../layouts/Layout.astro';
 import SelectionEditor from '../components/SelectionEditor.astro';
 import copySrc from '../scripts/copy.js?raw';
 import pasteSrc from '../scripts/paste.js?raw';
+import growSrc from '../scripts/grow.js?raw';
 
 /** Strip comments and collapse whitespace (string-aware) for the bookmarklets. */
 function minify(src: string): string {
@@ -76,11 +77,13 @@ function minify(src: string): string {
 
 const copyBm = minify(copySrc);
 const pasteBm = minify(pasteSrc);
+const growBm = minify(growSrc);
 
 const steps = [
 	'Open the source frame in CVAT and click COPY.',
 	'(Optional) Open this site, paste into the Selection Editor, pick the labels you want, click "Copy selection".',
 	'Go to the target frame in CVAT and click PASTE.',
+	'(Optional) Boxes too tight? Click GROW on that frame and choose which labels to grow or shrink by 1–2 px.',
 	'Review the boxes, then press CVAT’s own Save button. Nothing reaches the server until then.',
 ];
 
@@ -105,7 +108,12 @@ const troubleshooting = [
 		q: 'Wrong shapes were pasted',
 		a: 'The clipboard was overwritten by something else after "Copy selection". Redo "Copy selection" here, then PASTE again.',
 	},
+	{
+		q: 'GROW panel did not change anything',
+		a: 'Tick the labels you want in the panel, then click Grow (or Shrink). If the canvas looks unchanged, change frame and come back, then press Save.',
+	},
 ];
+
 ---
 
 <Layout>
@@ -121,8 +129,9 @@ const troubleshooting = [
 				Move the work<br /><em>with you.</em>
 			</h1>
 			<p class="editorial-dek mx-auto mt-6 max-w-2xl">
-				CVAT can’t copy annotations between frames — these two bookmarklets can,
-				with an optional editor to pick exactly which shapes travel.
+				CVAT can’t copy annotations between frames — these bookmarklets can,
+				with an optional editor to pick exactly which shapes travel, and a panel
+				to nudge box sizes by a pixel or two.
 			</p>
 		</header>
 
@@ -136,10 +145,11 @@ const troubleshooting = [
 			</p>
 			<div class="grid gap-5 sm:grid-cols-2">
 				{
-					[
-						{ id: 'copy', title: 'COPY', desc: 'Runs on the source frame. Puts its shapes on the clipboard.', src: copySrc },
-						{ id: 'paste', title: 'PASTE', desc: 'Runs on the target frame. Pastes the selection (or last COPY).', src: pasteSrc },
-					].map((s) => (
+				[
+					{ id: 'copy', title: 'COPY', desc: 'Runs on the source frame. Puts its shapes on the clipboard.', src: copySrc },
+					{ id: 'paste', title: 'PASTE', desc: 'Runs on the target frame. Pastes the selection (or last COPY).', src: pasteSrc },
+					{ id: 'grow', title: 'GROW', desc: 'Runs on the frame you are viewing. Opens a panel to grow or shrink chosen labels by 1–2 px.', src: growSrc },
+				].map((s) => (
 						<div class="editorial-card flex flex-col gap-4 p-6">
 							<div>
 								<div class="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">Bookmarklet</div>
@@ -246,10 +256,11 @@ const troubleshooting = [
 	</main>
 </Layout>
 
-<script is:inline define:vars={{ copyRaw: copySrc, pasteRaw: pasteSrc, copyBm, pasteBm }}>
+<script is:inline define:vars={{ copyRaw: copySrc, pasteRaw: pasteSrc, growRaw: growSrc, copyBm, pasteBm, growBm }}>
 	(function () {
 		var currentCopyRaw = copyRaw;
 		var currentCopyBm = copyBm;
+		var raws = { copy: function () { return currentCopyRaw; }, paste: pasteRaw, grow: growRaw };
 
 		function apply(id, code) {
 			var a = document.getElementById(id);
@@ -258,6 +269,7 @@ const troubleshooting = [
 		}
 		apply('bm-copy', copyBm);
 		apply('bm-paste', pasteBm);
+		apply('bm-grow', growBm);
 
 		function flash(btn, text) {
 			btn.textContent = text;
@@ -292,26 +304,18 @@ const troubleshooting = [
 			return copied ? Promise.resolve() : Promise.reject(new Error('Clipboard write blocked'));
 		}
 
-		document.getElementById('copy-code-copy').addEventListener('click', function () {
-			var btn = this;
-			copyText(currentCopyRaw)
-				.then(function () {
-					flash(btn, 'Copied!');
-				})
-				.catch(function () {
-					flash(btn, 'Clipboard blocked');
-				});
-		});
-
-		document.getElementById('copy-code-paste').addEventListener('click', function () {
-			var btn = this;
-			copyText(pasteRaw)
-				.then(function () {
-					flash(btn, 'Copied!');
-				})
-				.catch(function () {
-					flash(btn, 'Clipboard blocked');
-				});
+		['copy', 'paste', 'grow'].forEach(function (id) {
+			var btn = document.getElementById('copy-code-' + id);
+			if (!btn) return;
+			btn.addEventListener('click', function () {
+				copyText(raws[id]())
+					.then(function () {
+						flash(btn, 'Copied!');
+					})
+					.catch(function () {
+						flash(btn, 'Clipboard blocked');
+					});
+			});
 		});
 
 		var input = document.getElementById('labels-input');

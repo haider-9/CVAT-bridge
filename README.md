@@ -1,9 +1,11 @@
 # CVAT Copy/Paste Annotations
 
 A small static site ([Astro](https://astro.build) + TypeScript + Tailwind) that
-distributes two bookmarklet scripts for copying annotations between frames in
-[CVAT](https://www.cvat.ai/), plus a **Selection Editor** page section where you
-can filter exactly which shapes get pasted.
+distributes three bookmarklet scripts for working with annotations in
+[CVAT](https://www.cvat.ai/) — COPY and PASTE to move shapes between frames, and
+GROW to nudge box sizes by 1–2 px on the frame you are viewing — plus a
+**Selection Editor** page section where you can filter exactly which shapes get
+pasted.
 
 ## Why
 

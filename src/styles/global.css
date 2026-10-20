@@ -1,6 +1,11 @@
 @import 'tailwindcss';
 
+/* This site is always light. Opt out of Tailwind v4's OS-based dark: variant so
+   dark:bg-* utilities never fire and hide text on a light page. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
+  color-scheme: light;
   --paper: #f3efe7;
   --ink: #24221e;
   --muted: #716d64;
@@ -63,6 +68,18 @@ h1 em { color: var(--accent); font-weight: 400; }
 .editorial-faq p { color: var(--muted); margin-top: .5rem; font-size: .9rem; line-height: 1.6; }
 .editorial-footer { border-top: 1px solid var(--ink); color: var(--muted); line-height: 1.6; }
 .scroll-area { max-width: 100%; overflow: auto; }
+
+/* Readable form controls regardless of OS/browser theme. */
+input:not([type='checkbox']):not([type='radio']),
+textarea,
+select {
+  background-color: #fff;
+  color: #000;
+}
+input::placeholder,
+textarea::placeholder {
+  color: #9aa0a6;
+}
 
 textarea, input { transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease; }
 textarea:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(181,69,50,.14); }
