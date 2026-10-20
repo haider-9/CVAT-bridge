@@ -109,6 +109,16 @@
   hint.style.cssText = 'color:#555;font-size:12px;margin-bottom:6px;';
   panel.appendChild(hint);
 
+  const searchRow = document.createElement('div');
+  searchRow.style.cssText = 'margin-bottom:6px;';
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.placeholder = 'Search labels…';
+  search.style.cssText = 'width:100%;box-sizing:border-box;padding:4px 8px;border:1px solid #cfc8bb;border-radius:4px;background:#fff;color:#000;font:inherit;font-size:12px;';
+  search.addEventListener('input', () => renderList());
+  searchRow.appendChild(search);
+  panel.appendChild(searchRow);
+
   const allRow = document.createElement('div');
   allRow.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;';
   const mkBtn = (text, fn) => {
@@ -132,10 +142,13 @@
 
   const renderList = () => {
     list.replaceChildren();
-    const groups = [...groupByLabel(states).entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const q = search.value.trim().toLowerCase();
+    const groups = [...groupByLabel(states).entries()]
+      .filter(([name]) => !q || name.toLowerCase().includes(q))
+      .sort((a, b) => a[0].localeCompare(b[0]));
     if (!groups.length) {
       const empty = document.createElement('div');
-      empty.textContent = 'No rectangles on this frame.';
+      empty.textContent = q ? 'No labels match the search.' : 'No rectangles on this frame.';
       empty.style.cssText = 'color:#555;';
       list.appendChild(empty);
       return;

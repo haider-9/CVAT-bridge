@@ -260,7 +260,7 @@ const troubleshooting = [
 	(function () {
 		var currentCopyRaw = copyRaw;
 		var currentCopyBm = copyBm;
-		var raws = { copy: function () { return currentCopyRaw; }, paste: pasteRaw, grow: growRaw };
+		var raws = { copy: function () { return currentCopyRaw; }, paste: function () { return pasteRaw; }, grow: function () { return growRaw; } };
 
 		function apply(id, code) {
 			var a = document.getElementById(id);
