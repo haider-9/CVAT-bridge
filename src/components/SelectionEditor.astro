@@ -117,6 +117,9 @@ const { pasteScript } = Astro.props;
 	let undoStack: number[][] = [];
 	let sortMode: 'az' | 'count' = 'az';
 	let nextId = 1;
+	// Open/closed state of the <details> dropdowns, kept across re-renders so
+	// ticking a checkbox never collapses the list the user is working in.
+	const detailOpen = new Map<string, boolean>();
 
 	// ---------- data ----------
 
@@ -361,6 +364,11 @@ const { pasteScript } = Astro.props;
 		li.append(header);
 
 		const details = document.createElement('details');
+		const detailKey = `label:${name}`;
+		details.open = detailOpen.get(detailKey) ?? false;
+		details.addEventListener('toggle', () => {
+			detailOpen.set(detailKey, details.open);
+		});
 		const summaryEl2 = document.createElement('summary');
 		summaryEl2.className = 'cursor-pointer px-2 py-1 text-sm text-zinc-500 select-none';
 		summaryEl2.textContent = 'Show boxes';
@@ -417,6 +425,7 @@ const { pasteScript } = Astro.props;
 	function render() {
 		const live = liveItems();
 		const selectedCount = live.filter((i) => i.selected).length;
+		const scrollTop = groupsEl.scrollTop;
 
 		groupsEl.replaceChildren();
 
@@ -451,6 +460,10 @@ const { pasteScript } = Astro.props;
 		}
 		const groupDetails = document.createElement('details');
 		groupDetails.className = 'rounded-lg border border-zinc-200 dark:border-zinc-800';
+		groupDetails.open = detailOpen.get('labels') ?? true;
+		groupDetails.addEventListener('toggle', () => {
+			detailOpen.set('labels', groupDetails.open);
+		});
 		const groupSummary = document.createElement('summary');
 		groupSummary.className = 'cursor-pointer px-3 py-2 text-sm font-medium select-none';
 		groupSummary.textContent = `Labels (${rows.length}) · ${live.length} annotations`;
@@ -463,6 +476,7 @@ const { pasteScript } = Astro.props;
 		}
 		groupDetails.append(groupList);
 		groupsEl.append(groupDetails);
+		groupsEl.scrollTop = scrollTop;
 	}
 
 	// ---------- actions ----------

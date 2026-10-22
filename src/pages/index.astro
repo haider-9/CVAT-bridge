@@ -6,6 +6,7 @@ import copySrc from '../scripts/copy.js?raw';
 import pasteSrc from '../scripts/paste.js?raw';
 import growSrc from '../scripts/grow.js?raw';
 import relabelSrc from '../scripts/relabel.js?raw';
+import deleteSrc from '../scripts/delete.js?raw';
 
 /** Strip comments and collapse whitespace (string-aware) for the bookmarklets. */
 function minify(src: string): string {
@@ -80,6 +81,7 @@ const copyBm = minify(copySrc);
 const pasteBm = minify(pasteSrc);
 const growBm = minify(growSrc);
 const relabelBm = minify(relabelSrc);
+const deleteBm = minify(deleteSrc);
 
 const steps = [
 	'Open the source frame in CVAT and click COPY.',
@@ -87,6 +89,7 @@ const steps = [
 	'Go to the target frame in CVAT and click PASTE.',
 	'(Optional) Boxes too tight? Click GROW on that frame and choose which labels to grow or shrink by 1–2 px.',
 	'(Optional) Wrong label on a shape? Click RELABEL on that frame and swap one label for another.',
+	'(Optional) Objects you do not want at all? Click DELETE on that frame and tick the labels to remove.',
 	'Review the boxes, then press CVAT’s own Save button. Nothing reaches the server until then.',
 ];
 
@@ -119,6 +122,10 @@ const troubleshooting = [
 		q: 'RELABEL did not change anything',
 		a: 'Pick the label to replace and the label to use, then click Replace label. Locked objects and tracks are skipped — a track keeps one label for every frame it spans, so relabel it from the objects sidebar instead.',
 	},
+	{
+		q: 'DELETE found no objects',
+		a: 'DELETE reads the annotation collection, so it sees every label on the frame even when CVAT’s own filters hide some of them. If the list is still empty, the frame really has no annotations — switch the scope to “Whole job” to look at every frame.',
+	},
 ];
 
 ---
@@ -138,8 +145,8 @@ const troubleshooting = [
 			<p class="editorial-dek mx-auto mt-6 max-w-2xl">
 				CVAT can’t copy annotations between frames — these bookmarklets can,
 				with an optional editor to pick exactly which shapes travel, a panel
-				to nudge box sizes by a pixel or two, and one to swap a wrong label
-				for the right one.
+				to nudge box sizes by a pixel or two, one to swap a wrong label for the
+				right one, and one to delete the labels you never wanted.
 			</p>
 		</header>
 
@@ -158,6 +165,7 @@ const troubleshooting = [
 					{ id: 'paste', title: 'PASTE', desc: 'Runs on the target frame. Pastes the selection (or last COPY).', src: pasteSrc },
 					{ id: 'grow', title: 'GROW', desc: 'Runs on the frame you are viewing. Opens a panel to grow or shrink chosen labels by 1–2 px.', src: growSrc },
 					{ id: 'relabel', title: 'RELABEL', desc: 'Runs on the frame you are viewing. Replaces one label with another — either direction.', src: relabelSrc },
+					{ id: 'delete', title: 'DELETE', desc: 'Runs on the frame you are viewing. Lists every label on the frame and removes the objects you tick.', src: deleteSrc },
 				].map((s) => (
 						<div class="editorial-card flex flex-col gap-4 p-6">
 							<div>
@@ -265,11 +273,11 @@ const troubleshooting = [
 	</main>
 </Layout>
 
-<script is:inline define:vars={{ copyRaw: copySrc, pasteRaw: pasteSrc, growRaw: growSrc, relabelRaw: relabelSrc, copyBm, pasteBm, growBm, relabelBm }}>
+<script is:inline define:vars={{ copyRaw: copySrc, pasteRaw: pasteSrc, growRaw: growSrc, relabelRaw: relabelSrc, deleteRaw: deleteSrc, copyBm, pasteBm, growBm, relabelBm, deleteBm }}>
 	(function () {
 		var currentCopyRaw = copyRaw;
 		var currentCopyBm = copyBm;
-		var raws = { copy: function () { return currentCopyRaw; }, paste: function () { return pasteRaw; }, grow: function () { return growRaw; }, relabel: function () { return relabelRaw; } };
+		var raws = { copy: function () { return currentCopyRaw; }, paste: function () { return pasteRaw; }, grow: function () { return growRaw; }, relabel: function () { return relabelRaw; }, delete: function () { return deleteRaw; } };
 
 		function apply(id, code) {
 			var a = document.getElementById(id);
@@ -280,6 +288,7 @@ const troubleshooting = [
 		apply('bm-paste', pasteBm);
 		apply('bm-grow', growBm);
 		apply('bm-relabel', relabelBm);
+		apply('bm-delete', deleteBm);
 
 		function flash(btn, text) {
 			btn.textContent = text;
@@ -314,7 +323,7 @@ const troubleshooting = [
 			return copied ? Promise.resolve() : Promise.reject(new Error('Clipboard write blocked'));
 		}
 
-		['copy', 'paste', 'grow', 'relabel'].forEach(function (id) {
+		['copy', 'paste', 'grow', 'relabel', 'delete'].forEach(function (id) {
 			var btn = document.getElementById('copy-code-' + id);
 			if (!btn) return;
 			btn.addEventListener('click', function () {

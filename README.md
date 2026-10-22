@@ -1,11 +1,12 @@
 # CVAT Copy/Paste Annotations
 
 A small static site ([Astro](https://astro.build) + TypeScript + Tailwind) that
-distributes four bookmarklet scripts for working with annotations in
+distributes five bookmarklet scripts for working with annotations in
 [CVAT](https://www.cvat.ai/) — COPY and PASTE to move shapes between frames, GROW
-to nudge box sizes by 1–2 px on the frame you are viewing, and RELABEL to replace
-one label with another on that frame — plus a **Selection Editor** page section
-where you can filter exactly which shapes get pasted.
+to nudge box sizes by 1–2 px on the frame you are viewing, RELABEL to replace
+one label with another on that frame, and DELETE to remove the labels you tick —
+plus a **Selection Editor** page section where you can filter exactly which
+shapes get pasted.
 
 ## Why
 
