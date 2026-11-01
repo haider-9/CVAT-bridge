@@ -298,7 +298,7 @@ const troubleshooting = [
 		}
 
 		function copyText(text) {
-			if (navigator.clipboard && navigator.clipboard.writeText) {
+			if (document.hasFocus() && navigator.clipboard && navigator.clipboard.writeText) {
 				return navigator.clipboard.writeText(text).catch(function () {
 					return copyTextFallback(text);
 				});
@@ -313,6 +313,7 @@ const troubleshooting = [
 			textarea.style.position = 'fixed';
 			textarea.style.opacity = '0';
 			document.body.appendChild(textarea);
+			textarea.focus();
 			textarea.select();
 			var copied = false;
 			try {

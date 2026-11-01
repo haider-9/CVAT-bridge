@@ -262,7 +262,7 @@ const { pasteScript } = Astro.props;
 
 	async function copyText(text: string): Promise<void> {
 		try {
-			if (navigator.clipboard?.writeText) {
+			if (document.hasFocus() && navigator.clipboard?.writeText) {
 				await navigator.clipboard.writeText(text);
 				return;
 			}
@@ -276,6 +276,7 @@ const { pasteScript } = Astro.props;
 		textarea.style.position = 'fixed';
 		textarea.style.opacity = '0';
 		document.body.appendChild(textarea);
+		textarea.focus();
 		textarea.select();
 		let copied = false;
 		try {

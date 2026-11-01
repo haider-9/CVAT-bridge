@@ -38,13 +38,11 @@
 
   const copyToClipboard = async text => {
     try {
-      if (navigator.clipboard?.writeText) {
+      if (document.hasFocus() && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
         return true;
       }
-    } catch (e) {
-      console.warn('Async clipboard write failed; trying the browser copy fallback.', e);
-    }
+    } catch {}
 
     const textarea = document.createElement('textarea');
     textarea.value = text;
@@ -52,6 +50,7 @@
     textarea.style.position = 'fixed';
     textarea.style.opacity = '0';
     document.body.appendChild(textarea);
+    textarea.focus();
     textarea.select();
     let copied = false;
     try { copied = document.execCommand('copy'); }
