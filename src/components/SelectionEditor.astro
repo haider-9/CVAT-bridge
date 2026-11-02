@@ -47,6 +47,7 @@ const { pasteScript } = Astro.props;
 
 	<div id="se-actions" class="hidden flex-wrap gap-2">
 		<button id="se-copy" type="button" class="btn btn-primary">Copy full PASTE script</button>
+		<button id="se-console" type="button" class="btn btn-secondary">Show in console</button>
 		<button id="se-download" type="button" class="btn btn-secondary">Download JSON</button>
 		<button id="se-clear" type="button" class="btn btn-secondary">Clear</button>
 	</div>
@@ -63,6 +64,7 @@ const { pasteScript } = Astro.props;
 			class="scroll-area w-full rounded-xl border border-zinc-300 bg-zinc-50 p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900"></textarea>
 		<p class="mt-1 text-xs text-zinc-500">
 			This is a complete runnable script with the selected data embedded. Paste it into the CVAT console.
+			If the copy button is blocked, click this box and press Ctrl+C (Cmd+C), or run <code>copy(cvatBridge.pasteScript())</code> in the browser console.
 		</p>
 	</div>
 
@@ -260,32 +262,72 @@ const { pasteScript } = Astro.props;
 		return pasteScript.replace(marker, `const EMBEDDED_DATA = ${json};`);
 	}
 
-	async function copyText(text: string): Promise<void> {
-		try {
-			if (document.hasFocus() && navigator.clipboard?.writeText) {
-				await navigator.clipboard.writeText(text);
-				return;
-			}
-		} catch {
-			// Fall through to the legacy browser copy path.
-		}
-
+	function legacyCopy(text: string): boolean {
 		const textarea = document.createElement('textarea');
 		textarea.value = text;
 		textarea.setAttribute('readonly', '');
 		textarea.style.position = 'fixed';
+		textarea.style.top = '0';
+		textarea.style.left = '0';
+		textarea.style.width = '2em';
+		textarea.style.height = '2em';
+		textarea.style.padding = '0';
+		textarea.style.border = '0';
+		textarea.style.outline = '0';
+		textarea.style.boxShadow = 'none';
 		textarea.style.opacity = '0';
+		textarea.style.zIndex = '-1';
 		document.body.appendChild(textarea);
 		textarea.focus();
 		textarea.select();
+		textarea.setSelectionRange(0, text.length);
 		let copied = false;
 		try {
 			copied = document.execCommand('copy');
-		} finally {
-			textarea.remove();
+		} catch {
+			// execCommand can throw when the browser forbids it.
 		}
-		if (!copied) throw new Error('Clipboard write blocked');
+		textarea.remove();
+		return copied;
 	}
+
+	async function copyText(text: string): Promise<boolean> {
+		try {
+			if (navigator.clipboard?.writeText) {
+				await navigator.clipboard.writeText(text);
+				return true;
+			}
+		} catch {
+			// Fall through to the legacy browser copy path.
+		}
+		return legacyCopy(text);
+	}
+
+	function selectOutput() {
+		outputEl.classList.remove('hidden');
+		outputTextEl.value = buildPasteScript(buildPayload().json);
+		outputTextEl.focus();
+		outputTextEl.select();
+		outputTextEl.setSelectionRange(0, outputTextEl.value.length);
+		outputTextEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+	}
+
+	// Console helpers for when the browser refuses clipboard access.
+	// Example: copy(cvatBridge.pasteScript()) in the browser console.
+	const bridge = ((window as any).cvatBridge ||= {}) as Record<string, unknown>;
+	bridge.pasteScript = () => buildPasteScript(buildPayload().json);
+	bridge.pasteJSON = () => buildPayload().json;
+	bridge.logPasteScript = () => {
+		const script = buildPasteScript(buildPayload().json);
+		console.log('%cPASTE script', 'font-weight:bold', script);
+		console.log('Copy it to the clipboard with: copy(cvatBridge.pasteScript())');
+		return script;
+	};
+	bridge.copyPasteScript = () => copyText(buildPasteScript(buildPayload().json));
+	bridge.selectPasteScript = () => {
+		selectOutput();
+		return true;
+	};
 
 	// ---------- rendering ----------
 
@@ -550,15 +592,31 @@ const { pasteScript } = Astro.props;
 	copyBtn.addEventListener('click', async () => {
 		const { json, labelCount, shapeCount } = buildPayload();
 		const script = buildPasteScript(json);
-		try {
-			await copyText(script);
+		const copied = await copyText(script);
+		if (copied) {
 			setStatus(
 				`${shapeCount} shape${shapeCount === 1 ? '' : 's'} from ${labelCount} label${labelCount === 1 ? '' : 's'} ready. Paste the full PASTE script into CVAT.`,
 				'ok',
 			);
-		} catch {
-			setStatus('Clipboard write was blocked. Allow clipboard permission for this site and try again.', 'error');
+			return;
 		}
+		selectOutput();
+		console.warn(
+			'Clipboard access was blocked. The script is selected on the page — press Ctrl+C. ' +
+				'You can also run copy(cvatBridge.pasteScript()) in this console.',
+		);
+		setStatus(
+			'Clipboard access was blocked. The script is selected below — press Ctrl+C (Cmd+C), or run copy(cvatBridge.pasteScript()) in the console.',
+			'error',
+		);
+	});
+
+	(document.getElementById('se-console') as HTMLButtonElement).addEventListener('click', () => {
+		(bridge.logPasteScript as () => string)();
+		setStatus(
+			'The script is in the console. Run copy(cvatBridge.pasteScript()) there if the copy button is blocked.',
+			'ok',
+		);
 	});
 
 	document.getElementById('se-download')!.addEventListener('click', () => {

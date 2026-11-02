@@ -111,6 +111,10 @@ const troubleshooting = [
 		a: 'Allow clipboard permission for this site (the padlock in the address bar). If PASTE can’t read the clipboard it falls back to the last COPY, which contains all labels.',
 	},
 	{
+		q: 'Copy buttons do nothing (Wayland, niri, Linux)',
+		a: 'When the browser refuses clipboard access, the code appears selected in a text box under the button — press Ctrl+C (Cmd+C) there. You can also open the browser console and run copy(cvatBridge.code("copy")), or for the editor copy(cvatBridge.pasteScript()). If wl-paste in a terminal shows nothing after copying, the browser may not own the Wayland clipboard; try launching it with --ozone-platform=wayland and/or run a clipboard manager such as cliphist.',
+	},
+	{
 		q: 'Wrong shapes were pasted',
 		a: 'The clipboard was overwritten by something else after "Copy selection". Redo "Copy selection" here, then PASTE again.',
 	},
@@ -188,6 +192,27 @@ const troubleshooting = [
 							>
 								Copy code
 							</button>
+							<button
+								id={`select-code-${s.id}`}
+								type="button"
+								class="btn btn-secondary self-start"
+							>
+								Select code manually
+							</button>
+							<textarea
+								id={`manual-${s.id}`}
+								readonly
+								rows="6"
+								spellcheck="false"
+								aria-label={`${s.title} code for manual copying`}
+								class="hidden scroll-area w-full rounded-xl border border-zinc-300 bg-zinc-50 p-3 font-mono text-xs"
+							></textarea>
+							<p
+								id={`manual-hint-${s.id}`}
+								class="hidden text-xs text-[var(--muted)]"
+							>
+								The code is selected. Press Ctrl+C (or Cmd+C) to copy it.
+							</p>
 							<details>
 								<summary class="cursor-pointer text-sm text-zinc-600 dark:text-zinc-400">
 									Show source
@@ -298,7 +323,7 @@ const troubleshooting = [
 		}
 
 		function copyText(text) {
-			if (document.hasFocus() && navigator.clipboard && navigator.clipboard.writeText) {
+			if (navigator.clipboard && navigator.clipboard.writeText) {
 				return navigator.clipboard.writeText(text).catch(function () {
 					return copyTextFallback(text);
 				});
@@ -311,31 +336,92 @@ const troubleshooting = [
 			textarea.value = text;
 			textarea.setAttribute('readonly', '');
 			textarea.style.position = 'fixed';
+			textarea.style.top = '0';
+			textarea.style.left = '0';
+			textarea.style.width = '2em';
+			textarea.style.height = '2em';
+			textarea.style.padding = '0';
+			textarea.style.border = '0';
+			textarea.style.outline = '0';
+			textarea.style.boxShadow = 'none';
 			textarea.style.opacity = '0';
+			textarea.style.zIndex = '-1';
 			document.body.appendChild(textarea);
 			textarea.focus();
 			textarea.select();
+			textarea.setSelectionRange(0, text.length);
 			var copied = false;
 			try {
 				copied = document.execCommand('copy');
-			} finally {
-				textarea.remove();
-			}
+			} catch (e) {}
+			textarea.remove();
 			return copied ? Promise.resolve() : Promise.reject(new Error('Clipboard write blocked'));
 		}
 
+		function showManual(id, code) {
+			var textarea = document.getElementById('manual-' + id);
+			if (!textarea) return false;
+			textarea.value = code;
+			textarea.classList.remove('hidden');
+			var hint = document.getElementById('manual-hint-' + id);
+			if (hint) hint.classList.remove('hidden');
+			textarea.focus();
+			textarea.select();
+			textarea.setSelectionRange(0, code.length);
+			textarea.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+			return true;
+		}
+
+		function logCode(id) {
+			var code = raws[id] ? raws[id]() : null;
+			if (!code) return null;
+			console.log('%c' + id.toUpperCase() + ' bookmarklet code', 'font-weight:bold', code);
+			console.log('Copy it to the clipboard with: copy(cvatBridge.code("' + id + '"))');
+			return code;
+		}
+
+		// Console helpers for when the browser refuses clipboard access.
+		// Example: copy(cvatBridge.code('paste')) or cvatBridge.select('copy').
+		window.cvatBridge = window.cvatBridge || {};
+		window.cvatBridge.ids = ['copy', 'paste', 'grow', 'relabel', 'delete'];
+		window.cvatBridge.code = function (id) {
+			return raws[id] ? raws[id]() : null;
+		};
+		window.cvatBridge.copy = function (id) {
+			var code = window.cvatBridge.code(id);
+			return code ? copyText(code) : Promise.reject(new Error('Unknown bookmarklet: ' + id));
+		};
+		window.cvatBridge.select = function (id) {
+			var code = window.cvatBridge.code(id);
+			return code ? showManual(id, code) : false;
+		};
+		window.cvatBridge.log = logCode;
+
 		['copy', 'paste', 'grow', 'relabel', 'delete'].forEach(function (id) {
 			var btn = document.getElementById('copy-code-' + id);
-			if (!btn) return;
-			btn.addEventListener('click', function () {
-				copyText(raws[id]())
-					.then(function () {
-						flash(btn, 'Copied!');
-					})
-					.catch(function () {
-						flash(btn, 'Clipboard blocked');
-					});
-			});
+			if (btn) {
+				btn.addEventListener('click', function () {
+					var code = raws[id]();
+					copyText(code)
+						.then(function () {
+							flash(btn, 'Copied!');
+						})
+						.catch(function () {
+							showManual(id, code);
+							console.warn(
+								'Clipboard access was blocked. The code is selected on the page — press Ctrl+C. ' +
+									'You can also run copy(cvatBridge.code("' + id + '")) in this console.',
+							);
+							flash(btn, 'Select + Ctrl+C');
+						});
+				});
+			}
+			var selectBtn = document.getElementById('select-code-' + id);
+			if (selectBtn) {
+				selectBtn.addEventListener('click', function () {
+					showManual(id, raws[id]());
+				});
+			}
 		});
 
 		var input = document.getElementById('labels-input');
