@@ -42,6 +42,8 @@ const { pasteScript } = Astro.props;
 		<button id="se-reset" type="button" class="btn btn-secondary btn-sm">Reset to original</button>
 		<button id="se-sort" type="button" class="btn btn-secondary btn-sm">Sort: A&ndash;Z</button>
 	</div>
+	<label for="se-label-search" class="sr-only">Search labels</label>
+	<input id="se-label-search" type="search" placeholder="Search labels…" class="hidden w-full rounded-lg border border-zinc-300 bg-zinc-50 p-2 text-sm" />
 
 	<ul id="se-groups" class="scroll-area max-h-[34rem] space-y-2"></ul>
 
@@ -111,6 +113,7 @@ const { pasteScript } = Astro.props;
 	const copyBtn = document.getElementById('se-copy') as HTMLButtonElement;
 	const loadBtn = document.getElementById('se-load') as HTMLButtonElement;
 	const sortBtn = document.getElementById('se-sort') as HTMLButtonElement;
+	const labelSearch = document.getElementById('se-label-search') as HTMLInputElement;
 	const undoBtn = document.getElementById('se-undo') as HTMLButtonElement;
 
 	let items: Item[] = [];
@@ -483,6 +486,7 @@ const { pasteScript } = Astro.props;
 		summaryEl.classList.remove('hidden');
 		toolbarEl.classList.remove('hidden');
 		actionsEl.classList.remove('hidden');
+		labelSearch.classList.remove('hidden');
 		outputEl.classList.remove('hidden');
 		jobEl.textContent = meta.jobId === null ? '?' : String(meta.jobId);
 		frameEl.textContent = meta.frame === null ? '?' : String(meta.frame);
@@ -501,6 +505,8 @@ const { pasteScript } = Astro.props;
 		} else {
 			rows.sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
 		}
+		const query = labelSearch.value.trim().toLowerCase();
+		const filteredRows = rows.filter(([name]) => !query || name.toLowerCase().includes(query));
 		const groupDetails = document.createElement('details');
 		groupDetails.className = 'rounded-lg border border-zinc-200 dark:border-zinc-800';
 		groupDetails.open = detailOpen.get('labels') ?? true;
@@ -509,13 +515,19 @@ const { pasteScript } = Astro.props;
 		});
 		const groupSummary = document.createElement('summary');
 		groupSummary.className = 'cursor-pointer px-3 py-2 text-sm font-medium select-none';
-		groupSummary.textContent = `Labels (${rows.length}) · ${live.length} annotations`;
+		groupSummary.textContent = `Labels (${filteredRows.length}${query ? ` of ${rows.length}` : ''}) · ${live.length} annotations`;
 		groupDetails.append(groupSummary);
 
 		const groupList = document.createElement('ul');
 		groupList.className = 'space-y-2 border-t border-zinc-200 p-2 dark:border-zinc-800';
-		for (const [name, group] of rows) {
+		for (const [name, group] of filteredRows) {
 			groupList.append(labelRow(name, group));
+		}
+		if (!filteredRows.length) {
+			const empty = document.createElement('li');
+			empty.className = 'p-2 text-sm text-zinc-500';
+			empty.textContent = 'No labels match the search.';
+			groupList.append(empty);
 		}
 		groupDetails.append(groupList);
 		groupsEl.append(groupDetails);
@@ -588,6 +600,8 @@ const { pasteScript } = Astro.props;
 		sortMode = sortMode === 'az' ? 'count' : 'az';
 		render();
 	});
+
+	labelSearch.addEventListener('input', render);
 
 	copyBtn.addEventListener('click', async () => {
 		const { json, labelCount, shapeCount } = buildPayload();

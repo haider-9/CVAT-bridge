@@ -7,6 +7,7 @@ import pasteSrc from '../scripts/paste.js?raw';
 import growSrc from '../scripts/grow.js?raw';
 import relabelSrc from '../scripts/relabel.js?raw';
 import deleteSrc from '../scripts/delete.js?raw';
+import moveSrc from '../scripts/move.js?raw';
 
 /** Strip comments and collapse whitespace (string-aware) for the bookmarklets. */
 function minify(src: string): string {
@@ -82,6 +83,7 @@ const pasteBm = minify(pasteSrc);
 const growBm = minify(growSrc);
 const relabelBm = minify(relabelSrc);
 const deleteBm = minify(deleteSrc);
+const moveBm = minify(moveSrc);
 
 const steps = [
 	'Open the source frame in CVAT and click COPY.',
@@ -170,6 +172,7 @@ const troubleshooting = [
 					{ id: 'grow', title: 'GROW', desc: 'Runs on the frame you are viewing. Opens a panel to grow or shrink chosen labels by 1–2 px.', src: growSrc },
 					{ id: 'relabel', title: 'RELABEL', desc: 'Runs on the frame you are viewing. Replaces one label with another — either direction.', src: relabelSrc },
 					{ id: 'delete', title: 'DELETE', desc: 'Runs on the frame you are viewing. Lists every label on the frame and removes the objects you tick.', src: deleteSrc },
+					{ id: 'move', title: 'MOVE', desc: 'Runs on the frame you are viewing. Searches labels, moves all objects under the labels you tick, and applies an X/Y offset.', src: moveSrc },
 				].map((s) => (
 						<div class="editorial-card flex flex-col gap-4 p-6">
 							<div>
@@ -298,11 +301,11 @@ const troubleshooting = [
 	</main>
 </Layout>
 
-<script is:inline define:vars={{ copyRaw: copySrc, pasteRaw: pasteSrc, growRaw: growSrc, relabelRaw: relabelSrc, deleteRaw: deleteSrc, copyBm, pasteBm, growBm, relabelBm, deleteBm }}>
+<script is:inline define:vars={{ copyRaw: copySrc, pasteRaw: pasteSrc, growRaw: growSrc, relabelRaw: relabelSrc, deleteRaw: deleteSrc, moveRaw: moveSrc, copyBm, pasteBm, growBm, relabelBm, deleteBm, moveBm }}>
 	(function () {
 		var currentCopyRaw = copyRaw;
 		var currentCopyBm = copyBm;
-		var raws = { copy: function () { return currentCopyRaw; }, paste: function () { return pasteRaw; }, grow: function () { return growRaw; }, relabel: function () { return relabelRaw; }, delete: function () { return deleteRaw; } };
+		var raws = { copy: function () { return currentCopyRaw; }, paste: function () { return pasteRaw; }, grow: function () { return growRaw; }, relabel: function () { return relabelRaw; }, delete: function () { return deleteRaw; }, move: function () { return moveRaw; } };
 
 		function apply(id, code) {
 			var a = document.getElementById(id);
@@ -314,6 +317,7 @@ const troubleshooting = [
 		apply('bm-grow', growBm);
 		apply('bm-relabel', relabelBm);
 		apply('bm-delete', deleteBm);
+		apply('bm-move', moveBm);
 
 		function flash(btn, text) {
 			btn.textContent = text;
@@ -383,7 +387,7 @@ const troubleshooting = [
 		// Console helpers for when the browser refuses clipboard access.
 		// Example: copy(cvatBridge.code('paste')) or cvatBridge.select('copy').
 		window.cvatBridge = window.cvatBridge || {};
-		window.cvatBridge.ids = ['copy', 'paste', 'grow', 'relabel', 'delete'];
+		window.cvatBridge.ids = ['copy', 'paste', 'grow', 'relabel', 'delete', 'move'];
 		window.cvatBridge.code = function (id) {
 			return raws[id] ? raws[id]() : null;
 		};
@@ -397,7 +401,7 @@ const troubleshooting = [
 		};
 		window.cvatBridge.log = logCode;
 
-		['copy', 'paste', 'grow', 'relabel', 'delete'].forEach(function (id) {
+		['copy', 'paste', 'grow', 'relabel', 'delete', 'move'].forEach(function (id) {
 			var btn = document.getElementById('copy-code-' + id);
 			if (btn) {
 				btn.addEventListener('click', function () {

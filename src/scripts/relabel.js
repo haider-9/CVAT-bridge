@@ -126,6 +126,12 @@
   targetRow.appendChild(swapBtn);
   panel.appendChild(targetRow);
 
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.placeholder = 'Search labels…';
+  search.style.cssText = selectStyle + 'margin-bottom:8px;';
+  panel.appendChild(search);
+
   const hint = document.createElement('div');
   hint.textContent = 'Only objects on this frame change. The edit is undoable with CVAT’s Undo button, and nothing reaches the server until you press Save.';
   hint.style.cssText = 'color:#555;font-size:12px;margin-bottom:8px;';
@@ -140,7 +146,8 @@
 
   const fillSource = (keep) => {
     const counts = countByLabel(replaceable());
-    const names = [...counts.keys()].sort((a, b) => a.localeCompare(b));
+    const query = search.value.trim().toLowerCase();
+    const names = [...counts.keys()].filter(name => !query || name.toLowerCase().includes(query)).sort((a, b) => a.localeCompare(b));
     source.replaceChildren();
     for (const name of names) {
       const opt = document.createElement('option');
@@ -153,8 +160,9 @@
 
   const fillTarget = (preferred) => {
     const from = source.value;
+    const query = search.value.trim().toLowerCase();
     const options = allLabels
-      .filter(l => l.name && l.name !== from)
+      .filter(l => l.name && l.name !== from && (!query || l.name.toLowerCase().includes(query)))
       .sort((a, b) => a.name.localeCompare(b.name));
     target.replaceChildren();
     for (const label of options) {
@@ -174,6 +182,12 @@
   }
 
   source.addEventListener('change', () => fillTarget());
+  search.addEventListener('input', () => {
+    const from = source.value;
+    const to = target.value;
+    fillSource(from);
+    fillTarget(to);
+  });
 
   let busy = false;
   const apply = async () => {
